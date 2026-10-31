@@ -181,21 +181,22 @@ export const ConversationSidebar: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-4 w-full md:w-80 lg:w-96 shrink-0 h-full overflow-y-auto pr-1">
-      {/* 1. Search Bar (Dark/Light pill styling as in screenshot) */}
-      <div className="relative">
-        <div className="bg-white dark:bg-[#151C2C] rounded-2xl sm:rounded-3xl px-4 py-3 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] dark:shadow-none border border-transparent dark:border-slate-800/80 flex items-center gap-3">
-          <Search className="w-5 h-5 text-slate-400 shrink-0 stroke-[2.2]" />
+      {/* 1. Search Bar - Matching user screenshot: sleek rounded-full dark pill */}
+      <div className="relative w-full">
+        <div className="w-full h-11 bg-slate-100/90 dark:bg-[#121929] rounded-full px-4 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] dark:shadow-none border border-slate-200/90 dark:border-slate-800/90 flex items-center gap-3 transition-colors focus-within:border-[var(--primary)]/60 focus-within:ring-2 focus-within:ring-[var(--primary)]/20">
+          <Search className="w-4.5 h-4.5 text-slate-400 dark:text-[#7f93b0] shrink-0 stroke-[2.2]" />
           <input
             type="text"
-            placeholder="Search by username, email or phone..."
+            placeholder="Search"
             value={searchQuery}
             onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-            className="w-full bg-transparent border-none text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none"
+            className="w-full bg-transparent border-none text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-[#64748b] focus:outline-none"
           />
           {searchQuery && (
             <button
               onClick={() => dispatch(setSearchQuery(""))}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-full hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Clear search"
             >
               <X className="w-4 h-4" />
             </button>

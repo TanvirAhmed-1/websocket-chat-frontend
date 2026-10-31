@@ -24,7 +24,6 @@ import {
   useRegisterMutation,
   useLoginMutation,
 } from "@/redux/features/auth/authApi";
-import { setTokenCookie } from "@/redux/server/storeCookies";
 import { Button } from "@/components/ui/button";
 
 export function RegisterForm() {
@@ -35,6 +34,7 @@ export function RegisterForm() {
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
+  const [isUsernameCustomized, setIsUsernameCustomized] = useState(false);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -45,6 +45,15 @@ export function RegisterForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Auto-fill username when name changes
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!isUsernameCustomized) {
+      const generated = val.toLowerCase().replace(/[^a-z0-9]/g, "");
+      setUsername(generated);
+    }
+  };
+
   // Strength check
   const isLengthValid = password.length >= 6;
   const hasLetters = /[a-zA-Z]/.test(password);
@@ -54,17 +63,42 @@ export function RegisterForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password.trim()) {
+    const cleanName = name.trim();
+    let cleanUsername = username.trim().replace(/^@/, "").toLowerCase();
+    if (!cleanUsername && cleanName) {
+      cleanUsername = cleanName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+    const cleanEmail = email.trim();
+    const cleanPhone = phone.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanName || !cleanEmail || !cleanPhone || !cleanPassword) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    if (password.length < 6) {
+    if (cleanUsername && cleanUsername.length < 3) {
+      toast.error("Username must be at least 3 characters");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      toast.error("Please enter a valid email address (e.g. name@domain.com)");
+      return;
+    }
+
+    if (cleanPhone.length < 5) {
+      toast.error("Please enter a valid phone number");
+      return;
+    }
+
+    if (cleanPassword.length < 6) {
       toast.error("Password must be at least 6 characters");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (cleanPassword !== confirmPassword) {
       toast.error("Passwords do not match");
       return;
     }
@@ -78,17 +112,17 @@ export function RegisterForm() {
 
     try {
       const res = await registerUser({
-        name: name.trim(),
-        username: username.trim().toLowerCase(),
-        email: email.trim(),
-        phone: phone.trim(),
-        password: password.trim(),
+        name: cleanName,
+        username: cleanUsername || undefined,
+        email: cleanEmail,
+        phone: cleanPhone,
+        password: cleanPassword,
       }).unwrap();
 
       let token =
         res?.data?.accessToken ||
-        res?.accessToken ||
         res?.data?.token ||
+        res?.accessToken ||
         res?.token ||
         res?.result?.token;
 
@@ -98,14 +132,14 @@ export function RegisterForm() {
       if (!token) {
         try {
           const loginRes = await loginUser({
-            email: email.trim(),
-            password: password.trim(),
+            email: cleanEmail,
+            password: cleanPassword,
           }).unwrap();
 
           token =
             loginRes?.data?.accessToken ||
-            loginRes?.accessToken ||
             loginRes?.data?.token ||
+            loginRes?.accessToken ||
             loginRes?.token ||
             loginRes?.result?.token;
 
@@ -116,28 +150,94 @@ export function RegisterForm() {
       }
 
       if (token) {
-        await setTokenCookie(token);
+        if (typeof document !== "undefined") {
+          document.cookie = `token=${encodeURIComponent(
+            token
+          )}; path=/; max-age=604800; SameSite=Lax`;
+        }
         const resolvedUser = user || {
           id: res?.data?.id || `user-${Date.now()}`,
-          name: name.trim(),
-          username: username.trim().toLowerCase(),
-          email: email.trim(),
-          phone: phone.trim(),
+          name: cleanName,
+          username: cleanUsername,
+          email: cleanEmail,
+          phone: cleanPhone,
           role: "USER",
         };
-        dispatch(setCredentials({ user: resolvedUser, token }));
+        try {
+          dispatch(setCredentials({ user: resolvedUser, token }));
+        } catch {
+          // ignore
+        }
       }
 
       toast.success("Account created! You are now logged in.", {
         icon: "🎉",
       });
-      router.push("/");
-      router.refresh();
+      window.location.href = "/";
+      return;
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { data?: { message?: string } })?.data?.message ||
-        "Registration failed. Please check your information.";
-      toast.error(errorMsg);
+      console.error("Registration error:", err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errObj = err as any;
+      let errorMsg = "Registration failed. Please check your information.";
+
+      if (errObj?.data) {
+        if (typeof errObj.data === "string" && errObj.data.trim()) {
+          errorMsg = errObj.data;
+        } else if (typeof errObj.data.message === "string" && errObj.data.message.trim()) {
+          errorMsg = errObj.data.message;
+        } else if (Array.isArray(errObj.data.message) && errObj.data.message.length > 0) {
+          errorMsg = errObj.data.message
+            .map((m: any) => (typeof m === "string" ? m : m.message || JSON.stringify(m)))
+            .join("; ");
+        } else if (typeof errObj.data.error === "string" && errObj.data.error.trim()) {
+          errorMsg = errObj.data.error;
+        }
+      } else if (errObj?.status === "FETCH_ERROR") {
+        errorMsg = "Cannot connect to server. Please verify backend is running on port 5000.";
+      } else if (typeof errObj?.message === "string" && errObj.message.trim()) {
+        errorMsg = errObj.message;
+      }
+
+      // If user is already registered in DB, attempt automatic login with their password!
+      if (
+        errorMsg.toLowerCase().includes("already exists") ||
+        (errObj?.data?.message && String(errObj.data.message).toLowerCase().includes("already exists"))
+      ) {
+        try {
+          const autoLoginRes = await loginUser({
+            email: cleanEmail,
+            password: cleanPassword,
+          }).unwrap();
+
+          const autoToken =
+            autoLoginRes?.data?.accessToken ||
+            autoLoginRes?.data?.token ||
+            autoLoginRes?.accessToken ||
+            autoLoginRes?.token;
+          const autoUser = autoLoginRes?.data?.user || autoLoginRes?.user;
+
+          if (autoToken) {
+            if (typeof document !== "undefined") {
+              document.cookie = `token=${encodeURIComponent(
+                autoToken
+              )}; path=/; max-age=604800; SameSite=Lax`;
+            }
+            if (autoUser) {
+              dispatch(setCredentials({ user: autoUser, token: autoToken }));
+            }
+            toast.success("Account already created! Logging you in...", {
+              icon: "🎉",
+            });
+            window.location.href = "/";
+            return;
+          }
+        } catch {
+          // If password doesn't match, display the message
+        }
+      }
+
+      toast.error(errorMsg, { duration: 5000 });
     } finally {
       setIsLoading(false);
     }
@@ -244,7 +344,7 @@ export function RegisterForm() {
                   required
                   placeholder="Your Name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   className="w-full h-10 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
                 />
               </div>
@@ -258,7 +358,10 @@ export function RegisterForm() {
                   required
                   placeholder="unique_username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))}
+                  onChange={(e) => {
+                    setIsUsernameCustomized(true);
+                    setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""));
+                  }}
                   className="w-full h-10 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
                 />
               </div>

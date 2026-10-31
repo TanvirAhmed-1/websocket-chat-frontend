@@ -14,12 +14,12 @@ import {
   CheckCircle2,
   Sparkles,
   Zap,
+  User,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAppDispatch } from "@/redux/hook";
 import { setCredentials } from "@/redux/features/auth/authSlice";
 import { useLoginMutation } from "@/redux/features/auth/authApi";
-import { setTokenCookie } from "@/redux/server/storeCookies";
 import { Button } from "@/components/ui/button";
 
 export function LoginForm() {
@@ -37,7 +37,7 @@ export function LoginForm() {
     e.preventDefault();
 
     if (!email.trim() || !password.trim()) {
-      toast.error("Please enter your email and password");
+      toast.error("Please enter your email, username, or phone and password");
       return;
     }
 
@@ -49,22 +49,46 @@ export function LoginForm() {
         password: password.trim(),
       }).unwrap();
 
+      // Support all backend response variations (NestJS transform interceptor: res.data.accessToken)
       const token =
-        res?.token || res?.result?.token || res?.accessToken;
-      if (token) {
-        await setTokenCookie(token);
-      }
+        res?.data?.accessToken ||
+        res?.accessToken ||
+        res?.data?.token ||
+        res?.token ||
+        res?.result?.token;
 
-      const user = res?.user || res?.result?.user || res?.data?.user;
-      if (user && token) {
-        dispatch(setCredentials({ user, token }));
+      const user =
+        res?.data?.user ||
+        res?.user ||
+        res?.result?.user || {
+          id: res?.data?.id || "user-1",
+          name: email.split("@")[0],
+          email: email.trim(),
+        };
+
+      if (token) {
+        // 2. Direct client cookie write so Next.js proxy sees it immediately
+        if (typeof document !== "undefined") {
+          document.cookie = `token=${encodeURIComponent(
+            token
+          )}; path=/; max-age=604800; SameSite=Lax`;
+        }
+
+        // 3. Update Redux store
+        try {
+          dispatch(setCredentials({ user, token }));
+        } catch {
+          // ignore
+        }
       }
 
       toast.success(res?.message || "Welcome back! Login successful.", {
         icon: "🎉",
       });
-      router.push("/");
-      router.refresh();
+
+      // Hard redirect to home page so Next.js proxy receives the fresh cookie
+      window.location.href = "/";
+      return;
     } catch (err: unknown) {
       const errorMsg =
         (err as { data?: { message?: string } })?.data?.message ||
@@ -170,16 +194,16 @@ export function LoginForm() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="my-6 flex flex-col gap-4">
-            {/* Email Field */}
+            {/* Email / Username / Phone Field */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-slate-400" /> Email Address
+                <User className="w-3.5 h-3.5 text-slate-400" /> Email, Username, or Phone
               </label>
               <div className="relative">
                 <input
-                  type="email"
+                  type="text"
                   required
-                  placeholder="name@example.com"
+                  placeholder="name@example.com, @username, or phone"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"

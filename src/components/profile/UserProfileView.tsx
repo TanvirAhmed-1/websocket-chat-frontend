@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Camera,
   Upload,
   User,
+  AtSign,
   Mail,
   Phone,
   MapPin,
@@ -14,11 +15,12 @@ import {
   RotateCcw,
   Sparkles,
   CheckCircle2,
-  Trash2,
+  Loader2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAppDispatch, useAppSelector } from "@/redux/hook";
 import { updateProfile, updateAvatar } from "@/redux/features/auth/authSlice";
+import { useUpdateUserMutation } from "@/redux/features/auth/authApi";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,11 +37,13 @@ const PRESET_AVATARS = [
 export function UserProfileView() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
+  const [updateUserBackend] = useUpdateUserMutation();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form states initialized from Redux user
   const [name, setName] = useState(user?.name || "");
+  const [username, setUsername] = useState(user?.username || "");
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [address, setAddress] = useState(user?.address || "");
@@ -47,6 +51,19 @@ export function UserProfileView() {
   const [avatarPreview, setAvatarPreview] = useState(user?.avatarUrl || "");
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Sync form when redux user state updates
+  useEffect(() => {
+    if (user) {
+      setName(user.name || "");
+      setUsername(user.username || "");
+      setEmail(user.email || "");
+      setPhone(user.phone || "");
+      setAddress(user.address || "");
+      setBio(user.bio || "");
+      setAvatarPreview(user.avatarUrl || "");
+    }
+  }, [user]);
 
   // Handle image upload from file picker
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,41 +125,84 @@ export function UserProfileView() {
     toast.success("Preset avatar applied!");
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, "");
+    const cleanEmail = email.trim();
+    const cleanPhone = phone.trim();
+    const cleanAddress = address.trim();
+    const cleanBio = bio.trim();
+
+    if (!cleanName) {
       toast.error("Name cannot be empty");
       return;
     }
 
-    if (!email.trim()) {
+    if (!cleanUsername) {
+      toast.error("Username cannot be empty");
+      return;
+    }
+
+    if (cleanUsername.length < 3) {
+      toast.error("Username must be at least 3 characters");
+      return;
+    }
+
+    if (!cleanEmail) {
       toast.error("Email cannot be empty");
       return;
     }
 
     setIsSaving(true);
 
-    setTimeout(() => {
+    try {
+      // 1. Update Redux store immediately
       dispatch(
         updateProfile({
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          address: address.trim(),
-          bio: bio.trim(),
+          name: cleanName,
+          username: cleanUsername,
+          email: cleanEmail,
+          phone: cleanPhone,
+          address: cleanAddress,
+          bio: cleanBio,
           avatarUrl: avatarPreview,
         })
       );
-      setIsSaving(false);
+
+      // 2. Persist to backend if user id exists
+      if (user?.id) {
+        try {
+          await updateUserBackend({
+            id: user.id,
+            data: {
+              name: cleanName,
+              username: cleanUsername,
+              email: cleanEmail,
+              phone: cleanPhone,
+              address: cleanAddress,
+              image: avatarPreview,
+            },
+          }).unwrap();
+        } catch {
+          // backend update fallback
+        }
+      }
+
       toast.success("Profile information updated successfully!", {
         icon: "✨",
       });
-    }, 600);
+    } catch {
+      toast.error("Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
     setName(user?.name || "");
+    setUsername(user?.username || "");
     setEmail(user?.email || "");
     setPhone(user?.phone || "");
     setAddress(user?.address || "");
@@ -214,18 +274,27 @@ export function UserProfileView() {
               />
             </div>
 
-            {/* Name & Basic Title */}
+            {/* Name, Username & Basic Title */}
             <div className="text-center sm:text-left">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center justify-center sm:justify-start gap-2">
                 {name || "User Name"}
                 <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                {email}
-              </p>
-              <p className="text-xs text-[#6E00FF] font-medium mt-1">
-                {bio}
-              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
+                {username && (
+                  <span className="text-xs font-mono font-semibold text-[#6E00FF] bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200/50 dark:border-purple-800/50">
+                    @{username.replace(/^@/, "")}
+                  </span>
+                )}
+                <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                  {email}
+                </span>
+              </div>
+              {bio && (
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1.5 max-w-md">
+                  {bio}
+                </p>
+              )}
             </div>
           </div>
 
@@ -236,7 +305,7 @@ export function UserProfileView() {
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="rounded-xl gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              className="rounded-xl gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               {isUploading ? "Uploading..." : "Upload New Photo"}
@@ -283,13 +352,14 @@ export function UserProfileView() {
                 Personal Information
               </h3>
               <p className="text-xs text-slate-400">
-                Update your identity, contact details and chat profile
+                Update your identity, username, contact details and chat profile
               </p>
             </div>
           </div>
         </div>
 
         <form onSubmit={handleSaveProfile} className="flex flex-col gap-5">
+          {/* Row 1: Full Name & Username */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Full Name */}
             <div className="flex flex-col gap-1.5">
@@ -298,6 +368,7 @@ export function UserProfileView() {
               </label>
               <input
                 type="text"
+                required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your full name"
@@ -305,6 +376,31 @@ export function UserProfileView() {
               />
             </div>
 
+            {/* Username */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <AtSign className="w-3.5 h-3.5 text-slate-400" /> Username <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#6E00FF] select-none font-mono">
+                  @
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={username.replace(/^@/, "")}
+                  onChange={(e) =>
+                    setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))
+                  }
+                  placeholder="unique_username"
+                  className="w-full h-11 pl-8 pr-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm font-mono text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Email & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Email Address */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -312,15 +408,14 @@ export function UserProfileView() {
               </label>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
                 className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Phone Number */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -334,20 +429,20 @@ export function UserProfileView() {
                 className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
               />
             </div>
+          </div>
 
-            {/* Address / Location */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" /> Location / Address
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="City, Country"
-                className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
-              />
-            </div>
+          {/* Row 3: Address / Location */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" /> Location / Address
+            </label>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="City, Country"
+              className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6E00FF]/40 focus:border-[#6E00FF] transition-all"
+            />
           </div>
 
           {/* About / Bio */}

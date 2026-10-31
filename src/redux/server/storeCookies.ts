@@ -3,24 +3,34 @@
 import { cookies } from "next/headers";
 
 export async function setTokenCookie(token: string) {
-  const cookieStore = await cookies();
-
-  cookieStore.set({
-    name: "token",
-    value: token,
-    httpOnly: false, // accessible for client checks if needed, while safe
-    path: "/",
-    sameSite: "lax",
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set({
+      name: "token",
+      value: token,
+      httpOnly: false,
+      path: "/",
+      sameSite: "lax",
+    });
+  } catch (err) {
+    console.warn("setTokenCookie server action non-fatal warning:", err);
+  }
 }
 
 export async function removeTokenCookie() {
-  const cookieStore = await cookies();
-  cookieStore.delete("token");
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete("token");
+  } catch (err) {
+    console.warn("removeTokenCookie server action non-fatal warning:", err);
+  }
 }
 
 export async function getTokenCookie(): Promise<string | undefined> {
-  const cookieStore = await cookies();
-  return cookieStore.get("token")?.value;
+  try {
+    const cookieStore = await cookies();
+    return cookieStore.get("token")?.value;
+  } catch {
+    return undefined;
+  }
 }
-
