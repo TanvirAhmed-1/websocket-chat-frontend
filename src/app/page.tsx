@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense } from "react";
 import { useAppSelector } from "@/redux/hook";
 import { SidebarNav } from "@/components/chat/SidebarNav";
 import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
@@ -48,13 +48,13 @@ export default function Home() {
           <UserProfileView />
         </div>
       ) : (
-        <>
+        <Suspense fallback={<div className="flex-1" />}>
           {/* Middle Conversation List (Groups + People + Search) */}
           <ConversationSidebar />
 
           {/* Right Main Chat Area */}
           <ChatArea />
-        </>
+        </Suspense>
       )}
     </main>
   );

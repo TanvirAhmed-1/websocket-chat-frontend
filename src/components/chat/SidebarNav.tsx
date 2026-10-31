@@ -31,6 +31,7 @@ export const SidebarNav: React.FC = () => {
 
   const displayName = mounted && user?.name ? user.name : "Profile";
   const avatarSrc = mounted && user?.avatarUrl ? user.avatarUrl : undefined;
+  const fallbackText = mounted && user?.name ? user.name.slice(0, 2).toUpperCase() : "U";
 
   return (
     <aside className="relative flex flex-col items-center justify-between w-18 sm:w-20 bg-[#6E00FF] py-6 rounded-[2.5rem] shadow-xl select-none shrink-0 h-full">
@@ -50,7 +51,7 @@ export const SidebarNav: React.FC = () => {
           <Avatar
             src={avatarSrc}
             alt={displayName}
-            fallback={user?.name ? user.name.slice(0, 2).toUpperCase() : "U"}
+            fallback={fallbackText}
             size="lg"
             className="h-12 w-12 border-2 border-white/80"
           />

@@ -13,7 +13,9 @@ import {
 import {
   useLazySearchUsersQuery,
   useStartConversationMutation,
+  useGetUserConversationsQuery,
 } from "@/redux/features/chat/chatApi";
+import { getSocket } from "@/lib/socket";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +29,77 @@ export const ConversationSidebar: React.FC = () => {
   const searchQuery = useAppSelector((state) => state.chat.searchQuery);
   const groups = useAppSelector((state) => state.chat.groups);
   const people = useAppSelector((state) => state.chat.people);
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const token = useAppSelector((state) => state.auth.token);
+
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const [triggerSearch, { data: apiSearchResults, isFetching }] =
     useLazySearchUsersQuery();
   const [startConversation] = useStartConversationMutation();
+  const { data: userConvsData, refetch: refetchConvs } =
+    useGetUserConversationsQuery(undefined, {
+      skip: !isMounted || !token,
+    });
 
   const [localSearchResults, setLocalSearchResults] = useState<any[]>([]);
+
+  // 1. Sync backend conversations into Redux people list
+  useEffect(() => {
+    if (userConvsData) {
+      const rawList = Array.isArray(userConvsData)
+        ? userConvsData
+        : (userConvsData as any)?.data || [];
+
+      if (Array.isArray(rawList) && rawList.length > 0) {
+        const mappedPeople: IConversationItem[] = rawList.map((c: any) => {
+          const otherPart =
+            c.participants?.find((p: any) => p.userId !== currentUser?.id) ||
+            c.participants?.[0];
+          const otherUser = otherPart?.user || {};
+          const lastMsg = c.messages?.[0];
+          const timeStr = lastMsg?.createdAt
+            ? new Date(lastMsg.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Recently";
+
+          return {
+            id: c.id,
+            isGroup: c.isGroup || false,
+            name: otherUser.name || c.name || "Chat",
+            avatar: otherUser.image || "",
+            lastMessage: lastMsg?.content || "Conversation started",
+            time: timeStr,
+            online: true,
+            isRead: lastMsg?.isRead ?? true,
+            unreadCount: 0,
+          };
+        });
+
+        dispatch(setConversations({ people: mappedPeople }));
+      }
+    }
+  }, [userConvsData, currentUser?.id, dispatch]);
+
+  // 2. Real-time socket listener to refresh conversations when new messages arrive
+  useEffect(() => {
+    if (!token) return;
+    const socket = getSocket(token);
+
+    const handleIncomingMessage = () => {
+      refetchConvs();
+    };
+
+    socket.on("newMessage", handleIncomingMessage);
+    return () => {
+      socket.off("newMessage", handleIncomingMessage);
+    };
+  }, [token, refetchConvs]);
 
   // Trigger search on debounce
   useEffect(() => {
@@ -50,7 +117,6 @@ export const ConversationSidebar: React.FC = () => {
           setLocalSearchResults(res.data);
         }
       } catch {
-        // Fallback search across known contacts if backend is unreachable
         const q = searchQuery.toLowerCase().trim();
         const matches = people.filter(
           (p) =>
@@ -66,21 +132,30 @@ export const ConversationSidebar: React.FC = () => {
 
   // Click on a searched user -> Start / Select conversation
   const handleSelectSearchedUser = async (user: any) => {
+    // Check if we already have an active conversation with this user
     const existingChat = people.find(
-      (p) => p.id === user.id || p.name === user.name
+      (p) => p.name === user.name || p.id === user.id
     );
 
     if (existingChat) {
       dispatch(setActiveConversation(existingChat.id));
       dispatch(setSearchQuery(""));
+      if (token) {
+        const socket = getSocket(token);
+        socket.emit("joinConversation", { conversationId: existingChat.id });
+      }
       toast.success(`Opened chat with ${existingChat.name}`);
       return;
     }
 
-    // Try backend start-conversation
+    // Call backend start-conversation
     try {
       const res = await startConversation({ recipientId: user.id }).unwrap();
-      const conversationId = res?.id || res?.conversationId || user.id;
+      const conversationId = res?.data?.id || res?.id || res?.conversationId;
+
+      if (!conversationId) {
+        throw new Error("No conversation ID returned from backend");
+      }
 
       const newContact: IConversationItem = {
         id: conversationId,
@@ -93,27 +168,24 @@ export const ConversationSidebar: React.FC = () => {
         online: true,
       };
 
-      dispatch(setConversations({ people: [newContact, ...people] }));
+      const updatedPeople = [
+        newContact,
+        ...people.filter((p) => p.id !== conversationId),
+      ];
+      dispatch(setConversations({ people: updatedPeople }));
       dispatch(setActiveConversation(conversationId));
       dispatch(setSearchQuery(""));
-      toast.success(`Started chat with ${user.name}!`);
-    } catch {
-      // Local fallback
-      const newContact: IConversationItem = {
-        id: user.id || `user-${Date.now()}`,
-        isGroup: false,
-        name: user.name,
-        avatar: user.image || user.avatarUrl || "",
-        lastMessage: "Conversation started",
-        time: "Just now",
-        isRead: true,
-        online: true,
-      };
 
-      dispatch(setConversations({ people: [newContact, ...people] }));
-      dispatch(setActiveConversation(newContact.id));
-      dispatch(setSearchQuery(""));
+      if (token) {
+        const socket = getSocket(token);
+        socket.emit("joinConversation", { conversationId });
+      }
+
+      refetchConvs();
       toast.success(`Started chat with ${user.name}!`);
+    } catch (err) {
+      console.error("Start conversation error:", err);
+      toast.error("Could not start conversation with user");
     }
   };
 

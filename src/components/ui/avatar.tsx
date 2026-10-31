@@ -47,7 +47,10 @@ export function Avatar({
             className="h-full w-full object-cover rounded-full"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center font-medium uppercase text-slate-600 bg-slate-200">
+          <div
+            suppressHydrationWarning
+            className="flex h-full w-full items-center justify-center font-medium uppercase text-slate-600 bg-slate-200"
+          >
             {fallback}
           </div>
         )}

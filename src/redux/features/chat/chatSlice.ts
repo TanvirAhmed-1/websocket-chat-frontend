@@ -75,9 +75,29 @@ const chatSlice = createSlice({
       if (!state.messages[conversationId]) {
         state.messages[conversationId] = [];
       }
-      state.messages[conversationId].push(action.payload);
 
-      // Update last message in list
+      // 1. Check for exact duplicate by id
+      const existsIndex = state.messages[conversationId].findIndex(
+        (m) => m.id === action.payload.id
+      );
+      if (existsIndex !== -1) {
+        state.messages[conversationId][existsIndex] = action.payload;
+      } else {
+        // 2. If it's a confirmed server message, replace any matching temporary optimistic message
+        const tempIndex = state.messages[conversationId].findIndex(
+          (m) =>
+            m.id.startsWith("temp-") &&
+            m.content === action.payload.content &&
+            m.senderId === action.payload.senderId
+        );
+        if (tempIndex !== -1 && !action.payload.id.startsWith("temp-")) {
+          state.messages[conversationId][tempIndex] = action.payload;
+        } else {
+          state.messages[conversationId].push(action.payload);
+        }
+      }
+
+      // 3. Update last message in contact list
       const p = state.people.find((item) => item.id === conversationId);
       if (p) {
         p.lastMessage = action.payload.content;
