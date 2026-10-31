@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="chat-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6E00FF" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#9333EA" />
+    </linearGradient>
+    <linearGradient id="chat-glow" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.05" />
+    </linearGradient>
+    <filter id="bubble-shadow" x="8" y="10" width="48" height="48" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#3B0764" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <rect width="64" height="64" rx="18" fill="url(#chat-bg)" />
+  <rect x="1.5" y="1.5" width="61" height="61" rx="16.5" stroke="url(#chat-glow)" stroke-width="2" />
+
+  <g filter="url(#bubble-shadow)">
+    <path
+      d="M17 31C17 22.1634 23.7157 15 32 15C40.2843 15 47 22.1634 47 31C47 39.8366 40.2843 47 32 47C29.6108 47 27.3486 46.4022 25.3526 45.3343L17.5 47.5L19.8664 41.2292C18.0678 38.3283 17 34.8021 17 31Z"
+      fill="#FFFFFF"
+    />
+  </g>
+
+  <circle cx="26" cy="31" r="2.6" fill="#6E00FF" />
+  <circle cx="32" cy="31" r="2.6" fill="#7C3AED" />
+  <circle cx="38" cy="31" r="2.6" fill="#9333EA" />
+
+  <circle cx="50" cy="14" r="5.5" fill="#22C55E" />
+  <circle cx="50" cy="14" r="4" fill="#4ADE80" />
+  <circle cx="50" cy="14" r="6" stroke="#FFFFFF" stroke-width="1.8" />
+</svg>
+
